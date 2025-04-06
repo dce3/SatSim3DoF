@@ -1,1 +1,2 @@
-# Rocket6DoF
+# SatSim3DoF
+
