@@ -1,39 +1,97 @@
-import spiceypy as spice
 import numpy as np
+import plotly.graph_objects as go
+from PIL import Image
 
-zarr = np.zeros((10, 3))
+# Set resolution for the Earth mesh.
+res_theta, res_phi = 720, 360
 
-print(zarr, "\n")
+# Load and resize the Earth image.
+img = Image.open("earth.jpg")
+img = img.resize((res_theta, res_phi))
+img_np = np.array(img)
 
+# Create a grid in spherical coordinates:
+theta = np.linspace(0, 2 * np.pi, res_theta, endpoint=False)
+phi = np.linspace(0, np.pi, res_phi)
+theta, phi = np.meshgrid(theta, phi)
 
-# Load the necessary SPICE kernels
-spice.furnsh("naif0012.tls")
-spice.furnsh("ephems/de430_1850-2150.bsp")
+# Cartesian coordinates for the Earth sphere (unit sphere)
+x = np.sin(phi) * np.cos(theta)
+y = np.sin(phi) * np.sin(theta)
+z = np.cos(phi)
 
-# Specify the observation time (example: January 1, 2025 at 12:00:00 UTC)
-time_str = "1992-01-01T12:00:00"
-et = spice.str2et(time_str)
+# Flatten arrays for the Mesh3d trace.
+x_flat = x.flatten()
+y_flat = y.flatten()
+z_flat = z.flatten()
 
-print(et)
+# Map each vertex to its corresponding pixel color from the image.
+vertex_colors = []
+for i in range(res_phi):
+    for j in range(res_theta):
+        r, g, b = img_np[i, j][:3]
+        vertex_colors.append(f"rgb({r},{g},{b})")
 
-spk_ids = spice.spkobj("ephems/de440.bsp")
-print("Object IDs and names in the kernel:")
-for i in range(spk_ids.card):
-    obj_id = spk_ids[i]
-    obj_name = spice.bodc2s(obj_id)
-    print(f"ID {obj_id}: {obj_name}")
+# Build mesh faces for the Earth.
+faces = []
+for i in range(res_phi - 1):
+    for j in range(res_theta):
+        next_j = (j + 1) % res_theta
+        idx1 = i * res_theta + j
+        idx2 = i * res_theta + next_j
+        idx3 = (i + 1) * res_theta + j
+        idx4 = (i + 1) * res_theta + next_j
+        faces.append([idx1, idx3, idx2])  # First triangle
+        faces.append([idx2, idx3, idx4])  # Second triangle
 
+faces = np.array(faces)
+i_faces = faces[:, 0]
+j_faces = faces[:, 1]
+k_faces = faces[:, 2]
 
-# Compute the state (position and velocity) of Mars relative to the Sun in the J2000 frame.
-# The returned state vector has 6 components: first three are position (km) and the last three are velocity (km/s)
-state, light_time = spice.spkezr("MARS BARYCENTER", et, "J2000", "NONE", "SUN")
+# Create the Earth Mesh3d.
+earth_trace = go.Mesh3d(
+    x=x_flat,
+    y=y_flat,
+    z=z_flat,
+    i=i_faces,
+    j=j_faces,
+    k=k_faces,
+    vertexcolor=vertex_colors,
+    flatshading=True,
+    lighting=dict(ambient=1.0, diffuse=1.0, specular=0.5)
+)
 
-# Output the results
-print(f"State of Mars relative to the Sun at {time_str}:")
-print("Position (km):", state[:3])
-print("Velocity (km/s):", state[3:])
-print(state)
+# Create an atmosphere layer:
+scale = 1.03  # Atmosphere is 3% larger than the Earth sphere.
+x_atmo = scale * x
+y_atmo = scale * y
+z_atmo = scale * z
 
-# Unload the kernels after computations to free resources
-spice.unload("naif0012.tls")
-spice.unload("de440.bs")
+atmosphere_trace = go.Surface(
+    x=x_atmo,
+    y=y_atmo,
+    z=z_atmo,
+    colorscale=[[0, "rgba(135,206,235,0.3)"], [1, "rgba(135,206,235,0.3)"]],
+    showscale=False,
+    opacity=0.5,
+    lighting=dict(ambient=1.0)
+)
+
+# Combine both traces in the same figure.
+fig = go.Figure(data=[earth_trace, atmosphere_trace])
+
+# Update layout for a black background.
+fig.update_layout(
+    title="Earth with Atmospheric Glow",
+    plot_bgcolor="black",
+    paper_bgcolor="black",
+    scene=dict(
+        xaxis=dict(visible=False),
+        yaxis=dict(visible=False),
+        zaxis=dict(visible=False),
+        bgcolor="black"  # 3D scene background color
+    )
+)
+
+fig.show()
