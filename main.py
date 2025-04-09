@@ -1,10 +1,10 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
+import matplotlib.animation as animation
 import spiceypy as spice
-import plotly.graph_objects as go
-from PIL import Image
 from tqdm import tqdm
+
 
 
 #Newton's Gravitational Constant
@@ -14,7 +14,7 @@ NGC = 6.67430e-11
 EPHEM_KERNEL_ADDRESS = "ephems/de440.bsp"
 spice.furnsh(EPHEM_KERNEL_ADDRESS)
 spice.furnsh("naif0012.tls") #This one handles the leapseconds
-spice.furnsh("pck00010.tpc")
+
 
 class CBody:
     def __init__(self, name, jpl_name, mass, radius):
@@ -180,264 +180,67 @@ class RK4Sim:
             et += self.h
 
     def visualize(self,  animate_rate=50):
+        # Extract the position data (using a stride for fewer points)
+        # Adjust the stride as needed for smoother animation
+        x = self.pos_arr[::1000, 0]
+        y = self.pos_arr[::1000, 1]
+        z = self.pos_arr[::1000, 2]
 
-        # ---------------------------------------------------
-        # Settings for animation
-        # ---------------------------------------------------
-        # Number of animation frames
-        num_frames = 200  
-        # Total simulation duration (in seconds)
-        total_duration = self.t_end - self.t_start  
-        # Time increment per animation frame (ephemeris time increment)
-        dt_anim = total_duration / (num_frames - 1)
-        # Map animation frame to index in self.pos_arr.
-        pos_arr_indices = np.linspace(0, self.pos_arr.shape[0] - 1, num_frames).astype(int)
+        # Create the figure and a single 3D axes
+        fig = plt.figure(figsize=(10, 7))
+        ax = fig.add_subplot(111, projection='3d')
 
-        # ---------------------------------------------------
-        # Load the Earth texture image and prepare the sphere grid.
-        # ---------------------------------------------------
-        # Use a resolution that is a trade-off between quality and performance.
-        res_theta, res_phi = 360, 180  # lower than 720x360 for smoother animation
-        img = Image.open("earth.jpg")
-        img = img.resize((res_theta, res_phi))
-        img_np = np.array(img)
+        # Generate a mesh for Earth's sphere using spherical coordinates
+        u = np.linspace(0, 2 * np.pi, 50)
+        v = np.linspace(0, np.pi, 50)
+        body = self.cbody_list[0]  # assuming the first body is Earth
+        x_sphere = body.radius * np.outer(np.cos(u), np.sin(v))
+        y_sphere = body.radius * np.outer(np.sin(u), np.sin(v))
+        z_sphere = body.radius * np.outer(np.ones(np.size(u)), np.cos(v))
 
-        # Create spherical coordinate grid.
-        theta = np.linspace(0, 2 * np.pi, res_theta, endpoint=False)
-        phi = np.linspace(0, np.pi, res_phi)
-        theta, phi = np.meshgrid(theta, phi)
-
-        # Cartesian coordinates for a sphere scaled by Earth’s radius.
-        # These coordinates are in the inertial frame.
-        # (We will rotate them for each frame.)
-        # First, identify the central body (assumed Earth) to get its radius.
-        earth = None
-        for body in self.cbody_list:
-            if body.name.upper() == self.center.upper():
-                earth = body
-                break
-        if earth is None:
-            raise ValueError("Central body '{}' not found".format(self.center))
-        radius = earth.radius
-
-        x = radius * np.sin(phi) * np.cos(theta)
-        y = radius * np.sin(phi) * np.sin(theta)
-        z = radius * np.cos(phi)
-        # Flattened arrays for Mesh3d.
-        x_flat = x.flatten()
-        y_flat = y.flatten()
-        z_flat = z.flatten()
-
-        # Build the vertex colors (from the image) for the Mesh3d.
-        vertex_colors = []
-        for i in range(res_phi):
-            for j in range(res_theta):
-                r, g, b = img_np[i, j][:3]
-                vertex_colors.append(f"rgb({r},{g},{b})")
-
-        # Build mesh faces (triangles) for the Earth.
-        faces = []
-        for i in range(res_phi - 1):
-            for j in range(res_theta):
-                next_j = (j + 1) % res_theta
-                idx1 = i * res_theta + j
-                idx2 = i * res_theta + next_j
-                idx3 = (i + 1) * res_theta + j
-                idx4 = (i + 1) * res_theta + next_j
-                faces.append([idx1, idx3, idx2])
-                faces.append([idx2, idx3, idx4])
-        faces = np.array(faces)
-        i_faces = faces[:, 0]
-        j_faces = faces[:, 1]
-        k_faces = faces[:, 2]
-
-        # Pre-calculate the base atmosphere mesh (a slightly larger sphere).
-        scale_atmo = 1.03  # Atmosphere 3% larger than Earth.
-        x_atmo = scale_atmo * x
-        y_atmo = scale_atmo * y
-        z_atmo = scale_atmo * z
-
-        # ---------------------------------------------------
-        # Prepare animation frames.
-        # ---------------------------------------------------
-        frames = []
-        for frame_idx in range(num_frames):
-            # Compute current epoch for this frame.
-            et_current = self.t_start + frame_idx * dt_anim
-            # Get the rotation matrix from "J2000" to "IAU_EARTH" at et_current.
-            rot_mat = spice.pxform("J2000", "IAU_EARTH", et_current)
-
-            # Rotate the Earth sphere vertices.
-            coords = np.vstack((x_flat, y_flat, z_flat))
-            rotated_coords = rot_mat.dot(coords)
-            x_rot = rotated_coords[0]
-            y_rot = rotated_coords[1]
-            z_rot = rotated_coords[2]
-
-            # Rotate the atmospheric layer vertices.
-            coords_atmo = np.vstack((x_atmo.flatten(), y_atmo.flatten(), z_atmo.flatten()))
-            rotated_atmo = rot_mat.dot(coords_atmo)
-            x_atmo_rot = rotated_atmo[0].reshape(x.shape)
-            y_atmo_rot = rotated_atmo[1].reshape(x.shape)
-            z_atmo_rot = rotated_atmo[2].reshape(x.shape)
-
-            # Process the orbit data.
-            # We'll display the orbit path from the beginning up to the current animation index.
-            idx = pos_arr_indices[frame_idx]
-            orbit_segment = self.pos_arr[:idx + 1]
-            # Rotate the orbit segment using the same rotation.
-            orbit_rot = []
-            for pos in orbit_segment:
-                orbit_rot.append(rot_mat.dot(pos))
-            orbit_rot = np.array(orbit_rot)
-
-            # Create updated trace dictionaries for this frame.
-            frame_data = [
-                # Earth Mesh3d (textured globe).
-                dict(
-                    type="mesh3d",
-                    x=x_rot,
-                    y=y_rot,
-                    z=z_rot,
-                    i=i_faces,
-                    j=j_faces,
-                    k=k_faces,
-                    vertexcolor=vertex_colors,
-                    flatshading=True,
-                    lighting=dict(ambient=1.0, diffuse=1.0, specular=0.5)
-                ),
-                # Atmosphere Surface.
-                dict(
-                    type="surface",
-                    x=x_atmo_rot,
-                    y=y_atmo_rot,
-                    z=z_atmo_rot,
-                    colorscale=[[0, "rgba(135,206,235,0.3)"], [1, "rgba(135,206,235,0.3)"]],
-                    showscale=False,
-                    opacity=0.5,
-                    lighting=dict(ambient=1.0)
-                ),
-                # Orbit trace (line up to current point).
-                dict(
-                    type="scatter3d",
-                    mode="lines+markers",
-                    x=orbit_rot[:, 0] if orbit_rot.size else [],
-                    y=orbit_rot[:, 1] if orbit_rot.size else [],
-                    z=orbit_rot[:, 2] if orbit_rot.size else [],
-                    line=dict(color="red", width=4),
-                    marker=dict(color="red", size=4),
-                )
-            ]
-
-            frames.append(dict(data=frame_data, name=str(frame_idx)))
-
-        # ---------------------------------------------------
-        # Build the initial traces using the first frame.
-        # ---------------------------------------------------
-        # Use et = self.t_start for the initial frame.
-        et0 = self.t_start
-        rot_mat0 = spice.pxform("J2000", "IAU_EARTH", et0)
-        coords0 = np.vstack((x_flat, y_flat, z_flat))
-        rotated_coords0 = rot_mat0.dot(coords0)
-        x_rot0 = rotated_coords0[0]
-        y_rot0 = rotated_coords0[1]
-        z_rot0 = rotated_coords0[2]
-
-        coords_atmo0 = np.vstack((x_atmo.flatten(), y_atmo.flatten(), z_atmo.flatten()))
-        rotated_atmo0 = rot_mat0.dot(coords_atmo0)
-        x_atmo_rot0 = rotated_atmo0[0].reshape(x.shape)
-        y_atmo_rot0 = rotated_atmo0[1].reshape(x.shape)
-        z_atmo_rot0 = rotated_atmo0[2].reshape(x.shape)
-
-        # For the orbit, show the starting point only.
-        orbit0 = self.pos_arr[:1]
-        orbit_rot0 = []
-        for pos in orbit0:
-            orbit_rot0.append(rot_mat0.dot(pos))
-        orbit_rot0 = np.array(orbit_rot0)
-
-        # Create the initial traces.
-        earth_trace = go.Mesh3d(
-            x=x_rot0,
-            y=y_rot0,
-            z=z_rot0,
-            i=i_faces,
-            j=j_faces,
-            k=k_faces,
-            vertexcolor=vertex_colors,
-            flatshading=True,
-            lighting=dict(ambient=1.0, diffuse=1.0, specular=0.5),
-            name="Earth"
-        )
-        atmosphere_trace = go.Surface(
-            x=x_atmo_rot0,
-            y=y_atmo_rot0,
-            z=z_atmo_rot0,
-            colorscale=[[0, "rgba(135,206,235,0.3)"], [1, "rgba(135,206,235,0.3)"]],
-            showscale=False,
-            opacity=0.5,
-            lighting=dict(ambient=1.0),
-            name="Atmosphere"
-        )
-        orbit_trace = go.Scatter3d(
-            x=orbit_rot0[:, 0],
-            y=orbit_rot0[:, 1],
-            z=orbit_rot0[:, 2],
-            mode="lines+markers",
-            line=dict(color="red", width=4),
-            marker=dict(color="red", size=4),
-            name="Orbit"
+        # Plot the Earth as a semi-transparent blue sphere
+        ax.plot_surface(
+            x_sphere, y_sphere, z_sphere,
+            color='blue', alpha=0.5,   # Adjust alpha as desired
+            rstride=4, cstride=4
         )
 
-        # ---------------------------------------------------
-        # Build the figure with frames and animation settings.
-        # ---------------------------------------------------
-        fig = go.Figure(
-            data=[earth_trace, atmosphere_trace, orbit_trace],
-            frames=frames
+        # Create an empty 3D line for the orbit trajectory that will be updated in the animation
+        line, = ax.plot([], [], [], label='Orbit Trajectory', color='black', lw=2)
+
+        # Set axes labels (units in meters)
+        ax.set_xlabel('X (m)')
+        ax.set_ylabel('Y (m)')
+        ax.set_zlabel('Z (m)')
+
+        # Calculate midpoints and maximum range to force equal aspect ratio
+        max_range = np.array([x.max() - x.min(), y.max() - y.min(), z.max() - z.min()]).max() / 2.0
+        mid_x = (x.max() + x.min()) * 0.5
+        mid_y = (y.max() + y.min()) * 0.5
+        mid_z = (z.max() + z.min()) * 0.5
+
+        # Set the axes limits so that all axes have the same range
+        ax.set_xlim(mid_x - max_range, mid_x + max_range)
+        ax.set_ylim(mid_y - max_range, mid_y + max_range)
+        ax.set_zlim(mid_z - max_range, mid_z + max_range)
+        ax.set_box_aspect([1, 1, 1])  # For Matplotlib 3.3+
+
+        ax.legend()
+
+        # Define the update function for animation, which updates the orbit curve
+        def update(num):
+            # Display the trajectory points up to the index 'num'
+            line.set_data(x[:num], y[:num])
+            line.set_3d_properties(z[:num])
+            return line,
+
+        # Create the animation.
+        # 'frames' is set to the number of points in the trajectory.
+        ani = animation.FuncAnimation(
+            fig, update, frames=len(x), interval=animate_rate, blit=False, repeat=False
         )
 
-        # Add play and slider buttons.
-        fig.update_layout(
-            title="Animated Earth Rotation with Spacecraft Orbit",
-            scene=dict(
-                xaxis=dict(visible=False),
-                yaxis=dict(visible=False),
-                zaxis=dict(visible=False),
-                bgcolor="black",
-                aspectmode="data"
-            ),
-            plot_bgcolor="black",
-            paper_bgcolor="black",
-            updatemenus=[{
-                "type": "buttons",
-                "showactive": False,
-                "buttons": [{
-                    "label": "Play",
-                    "method": "animate",
-                    "args": [None, {
-                        "frame": {"duration": animate_rate, "redraw": True},
-                        "fromcurrent": True,
-                        "transition": {"duration": 0}
-                    }]
-                }]
-            }],
-            sliders=[{
-                "steps": [{
-                    "args": [[str(k)], {"frame": {"duration": animate_rate, "redraw": True}, "mode": "immediate"}],
-                    "label": str(k),
-                    "method": "animate"
-                } for k in range(num_frames)],
-                "transition": {"duration": 0},
-                "x": 0.1,
-                "y": 0,
-                "currentvalue": {"font": {"size": 12}, "prefix": "Frame: ", "visible": True},
-                "len": 0.9
-            }]
-        )
-
-        fig.show()
-
+        plt.show()
 
 
 
@@ -445,7 +248,7 @@ class RK4Sim:
 earth = CBody("Earth", "EARTH", 5.9722e24, 6378137)
 # Note: The spacecraft state vector should contain position (first three values)
 # and velocity (last three values). Here we assume the units are consistent (meters, m/s).
-sat1 = SCraft(100, 80, 1000, 320, np.array([0, earth.radius + 400000, 0, 7000, 0, 1200]))
-sim1 = RK4Sim(0.1, [earth], [sat1], 0, 4000)
+sat1 = SCraft(100, 80, 1000, 320, np.array([0, earth.radius + 400000, 0, 10000, 0, 1200]))
+sim1 = RK4Sim(0.1, [earth], [sat1], 0, 25000)
 sim1.run()
 sim1.visualize()
