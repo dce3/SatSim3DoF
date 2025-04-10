@@ -25,7 +25,7 @@ class CBody:
 
         self.gparam = self.mass * NGC
 
-    def get_svec(self, et, frame="EARTH"):
+    def get_svec(self, et, frame="SUN"):
         state, light_time = spice.spkezr(self.jpl_name, et, "J2000", "NONE", frame)
         state_m = state * 1e3  # Convert km to m
         return state_m
@@ -114,6 +114,10 @@ class RK4Sim:
         self.hcount = int((self.t_end - self.t_start) / h)
         self.pos_arr = np.zeros((self.hcount, 3))
 
+        earth_state_sun = earth.get_svec(t_start, frame="SUN")
+        self.sc_list[0].svec = self.sc_list[0].svec + earth_state_sun
+
+
     def tstep(self, sc_id, et):
         scraft = self.sc_list[sc_id]
 
@@ -161,8 +165,8 @@ class RK4Sim:
 
     
 
-    def visualize(self, animate_rate=3):
-        stride = 10  # integration-step sampling stride
+    def visualize(self, animate_rate=1):
+        stride = 500  # integration-step sampling stride
         # --- Spacecraft trajectory data (sampled) ---
         sat_x = self.pos_arr[::stride, 0]
         sat_y = self.pos_arr[::stride, 1]
@@ -355,10 +359,10 @@ class RK4Sim:
 # Define Earth, Moon, and spacecraft, then execute the simulation
 earth = CBody("Earth", "EARTH", 5.9722e24, 6378137, color="blue")
 luna = CBody("Moon", "MOON", 7.34767309e22, 1737400, color="white")
-sol  = CBody("Sun", "SUN", 1.9891e30, 6.957e8, color="yellow")
+sol  = CBody("Sun", "10", 1.9891e30, 6.957e8, color="yellow")
 # Sample spacecraft state vector: [position_x, position_y, position_z, velocity_x, velocity_y, velocity_z]
 sat1 = SCraft(100, 80, 1000, 320, np.array([4404364.154715429, -4311452.937854692, -3333241.5900105746, 8626.193135065847, 5867.596093273166, -1661.187545094598]))
-sim1 = RK4Sim(1, [earth, luna, sol], [sat1], 298635469, 298635469+14*36000, "Lunar Reconnaissance Orbiter")
+sim1 = RK4Sim(10, [earth, luna, sol], [sat1], 298635469, 298635469+14*36000, "Lunar Reconnaissance Orbiter Lunar Injection and Transfer")
 
 sim1.run()
 sim1.visualize()

@@ -29,10 +29,6 @@ def main():
     epoch_str = "2009-06-18T22:16:43"
     et = spice.str2et(epoch_str)
 
-    # Print IDs in the Voyager 2 kernel
-    ids = spice.spkobj(voy2_kernel)
-    print("Objects in Voyager 2 kernel:", ids)
-
     # Set the target, reference frame, and observer.
     # For LRO, the SPICE ID is typically set to -120.
     target    = "-85"
