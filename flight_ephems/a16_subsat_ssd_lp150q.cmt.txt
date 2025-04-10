@@ -1,0 +1,137 @@
+ 
+APOLLO 16 Subsatellite Trajectory SPK file, JPL SSD Solution
+===========================================================================
+ 
+     Created by Alex Konopliv, Solar System Dynamics group, JPL, July 3,
+     2007. Comments added by Boris Semenov, NAIF/JPL, July 5, 2007.
+ 
+ 
+Objects in the Ephemeris
+--------------------------------------------------------
+ 
+     This file contains ephemeris data for the APOLLO 16 Subsatellite (NAIF
+     ID -916300) with respect to the Moon in the J2000 inertial reference
+     frame.
+ 
+ 
+Approximate Time Coverage
+--------------------------------------------------------
+ 
+     This file covers the following time period:
+ 
+        Start of Interval (ET)      End of Interval (ET)
+        ------------------------    ------------------------
+        1972 APR 27 23:45:42.185    1972 MAY 29 04:10:42.184
+ 
+ 
+Status
+--------------------------------------------------------
+ 
+     This file contains the APOLLO 16 Subsatellite trajectory determined 
+     by the Solar System Dynamics group, JPL. Contact the data producer if 
+     you are unsure whether this file is applicable for your application.
+ 
+ 
+Pedigree
+--------------------------------------------------------
+ 
+     This file contains APOLLO 16 Subsatellite trajectory determined using
+     the lunar gravity field LP150Q. This spherical harmonic 150th degree
+     gravity solution includes Apollo, Lunar Orbiter, Clementine and all
+     Lunar Prospector tracking data. The Apollo 16 subsatellite impacted
+     the lunar surface about 35 days after release from the Apollo 16 CSM.
+     It was a simple spin stabilized spacecraft with out a propulsive
+     system (unable to raise its altitude).
+ 
+ 
+Segment Boundary Discontinuities
+--------------------------------------------------------
+ 
+     This SPK file contains a number of SPK segments that came from
+     original individual SPK files. Although, each segment provides
+     continuous trajectory within the interval that it covers, in general a
+     position and velocity discontinuity exists at the boundary of the
+     segment and the segments whose coverage immediately precede and follow
+     it. The times and magnitudes of these discontinuities are provided in
+     the Appendix 1 of these comments.
+ 
+ 
+Contacts
+--------------------------------------------------------
+ 
+     If you have questions regarding this data contact
+ 
+        Alex Konopliv
+        818 354-6105
+        Alexander.S.Konopliv@jpl.nasa.gov
+ 
+     or
+ 
+        Boris V. Semenov
+        (818)-354-8136,
+        Boris.Semenov@jpl.nasa.gov
+ 
+ 
+Appendix 1: Segment Boundary Discontinuity Summary
+--------------------------------------------------------
+ 
+     This SPK file contains a number of SPK segments that came from
+     original individual SPK files. Although, each segment provides
+     continuous trajectory within the interval that it covers, in general a
+     position and velocity discontinuity exists at the boundary of the
+     segment and the segments whose coverage immediately precede and follow
+     it. The times and magnitudes of these discontinuities are provided in
+     the table included in this Appendix.
+ 
+     The top portion of the table contains the name of this SPK file. All
+     descriptive lines in the top portion of the file start with the ``#''
+     character to allow direct plotting of the data in the freeware
+     ``gnuplot'' application.
+ 
+     The table consists of 4 columns. The first column contains the UTC
+     time of that segment boundary. The last three columns (2..4) contain
+     view coordinate frame components -- ``down track'' (this direction is
+     parallel to the velocity vector), ``normal to plane'' (this direction
+     is computed as cross product of position vector by velocity vector)
+     and ``in plane'' (this direction is computed as a cross product of
+     ``down track'' by ``normal to plane'') -- of the difference between
+     the state vectors computed at that UTC time defining segment boundary
+     at which a discontinuity exists.
+ 
+     The pairs of segments and discontinuity times are determined using an
+     algorithm that emulates the standard SPK loading priority -- ``last
+     loaded segment takes precedence''. Therefore, the discontinuities
+     summarized in the file are those which a user reading file would
+     actually see.
+ 
+     The difference components in the view coordinate frame were computed
+     for each discontinuity using the following algorithm:
+ 
+         --   A single state was computed from each pair of segment the
+              J2000 frame at the time of discontinuity.
+ 
+         --   For this pair of states, a position difference vector was
+              computed by subtracting the state computed from the segment
+              with higher priority from the state computed from segment
+              with lower priority. Then, a frame transformation matrix
+              rotating these difference vectors from J2000 to the view
+              coordinate frame defined by the state obtained from the
+              higher priority segment was computed, and the position
+              difference vector was rotated to the view frame coordinates
+              using this matrix.
+ 
+     The segment boundary discontinuities for this file are:
+ 
+        #
+        # Summary of discontinuities at segment boundaries for
+        # SPK file a16_subsat_ssd_lp150q.bsp:
+        #
+        #  BOUNDARY TIME (UTC)   DOWNTRK INPLANE  NORMAL
+        #----------------------- ------- ------- -------
+        1972-05-03T22:00:00.000   0.013  -0.014  -0.190
+        1972-05-09T20:10:00.000  -0.020  -0.018  -0.021
+        1972-05-12T19:10:00.000  -0.067  -0.013   0.126
+        1972-05-15T18:10:00.000  -0.003  -0.001   0.003
+        1972-05-18T21:15:00.000  -0.015   0.002  -0.085
+        1972-05-23T17:50:00.000  -0.150   0.024  -0.156
+ 

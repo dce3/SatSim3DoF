@@ -1,0 +1,76 @@
+ 
+; apollo15-1.bsp LOG FILE
+;
+; Created 1996-11-08/10:33:50.00.
+;
+; BEGIN NIOSPK COMMANDS
+ 
+LEAPSECONDS_FILE    = /kernels/gen/lsk/naif0005.tls
+SPK_FILE            = apollo15-1.bsp
+  SOURCE_NIO_FILE   = p_01-AUG-1971a.nio
+    BODIES          = -15
+    BODY_MAP        = -15  -915
+    BEGIN_TIME      = CAL-ET 1971 AUG 01 02:00:41.679
+    END_TIME        = CAL-ET 1971 AUG 01 14:30:41.679
+  SOURCE_NIO_FILE   = p_30-JUL-1971a.nio
+    BODIES          = -15
+    BODY_MAP        = -15  -915
+    BEGIN_TIME      = CAL-ET 1971 JUL 30 01:00:41.672
+    END_TIME        = CAL-ET 1971 JUL 30 10:30:41.674
+  SOURCE_NIO_FILE   = p_30-JUL-1971b.nio
+    BODIES          = -15
+    BODY_MAP        = -15  -915
+    BEGIN_TIME      = CAL-ET 1971 JUL 30 10:00:41.674
+    END_TIME        = CAL-ET 1971 JUL 30 14:25:41.674
+  SOURCE_NIO_FILE   = p_30-JUL-1971c.nio
+    BODIES          = -15
+    BODY_MAP        = -15  -915
+    BEGIN_TIME      = CAL-ET 1971 JUL 30 13:55:41.674
+    END_TIME        = CAL-ET 1971 JUL 30 20:00:41.674
+  SOURCE_NIO_FILE   = p_30-JUL-1971d.nio
+    BODIES          = -15
+    BODY_MAP        = -15  -915
+    BEGIN_TIME      = CAL-ET 1971 JUL 30 20:30:41.674
+    END_TIME        = CAL-ET 1971 JUL 31 06:30:41.677
+  SOURCE_NIO_FILE   = p_31-JUL-1971a.nio
+    BODIES          = -15
+    BODY_MAP        = -15  -915
+    BEGIN_TIME      = CAL-ET 1971 JUL 31 06:00:41.677
+    END_TIME        = CAL-ET 1971 JUL 31 16:30:41.677
+  SOURCE_NIO_FILE   = p_31-JUL-1971b.nio
+    BODIES          = -15
+    BODY_MAP        = -15  -915
+    BEGIN_TIME      = CAL-ET 1971 JUL 31 16:00:41.677
+    END_TIME        = CAL-ET 1971 AUG 01 02:30:41.679
+ 
+; END NIOSPK COMMANDS
+ 
+This SPK file was made for Mert Davies (RAND Corp.) using new
+Apollo 15 Lunar Command Module orbits created by Alex Konopliv (JPL)
+as a result of his efforts to update the lunar gravity model.
+Alex believes, however, that these new results will be essentially
+the same as (no improvement over) the original orbit estimate results
+as reflected in labels on the Pan Camera images.
+ 
+Alex's NAVIO-format source files had 15 as the spacecraft ID, and did
+not include a reference frame specification. The NIOSPK BODY_MAP
+command was used to change the spacecraft ID to 915, and, based on
+input from Alex, NGRPS was used to insert 'J2000' as the reference frame.
+ 
+There were seven NAVIO source files used. The resultant SPICE SPK file
+shows a single, substantial gap in coverage. A summary of the SPK file is:
+ 
+Summary for: apollo15-1.bsp
+ 
+Body: -915
+      Start of Interval (ET)              End of Interval (ET)
+      --------------------------------    --------------------------------
+      1971 JUL 30 01:00:41.673            1971 JUL 30 20:00:41.675
+      1971 JUL 30 20:30:41.675            1971 AUG 01 14:30:41.680
+ 
+ 
+Chuck Acton
+NAIF/JPL
+8 NOV 1996
+ 
+ 
