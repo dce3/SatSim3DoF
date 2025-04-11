@@ -777,7 +777,7 @@ def compare_fdata_list(fdata_list, labels, flight_ephem, scraft_id, n_points, en
 
 
 
-#Preloaded Simulations to Visualize and Plot
+#Preloaded Simulations to Visualize and Plot (so you don't have to wait for a whole Voyager 2 simulation to run lol)
 
 lro_fdata1  = FData.load_from_file("examples/fdata_lro_h1_em.pkl")  #Lunar Reconnaisance Orbiter Earth-Moon
 lro_fdata2  = FData.load_from_file("examples/fdata_lro_h1_fs.pkl")  #Lunar Reconnaisance Orbiter Full-Solar
@@ -785,22 +785,37 @@ v2_fdata1   = FData.load_from_file("examples/fdata_v2_h100.pkl")    #Voyager-2 E
 
 #Uncomment To Run Visualiztion
 #lro_fdata1.visualize()
-#lro_fdata1.visualize()
+#lro_fdata2.visualize()
 #v2_fdata1.visualize(time_warp=100000)
 
 #Sample simulation for the a Molniya Satellite
 t_end = 90000 #simulation duration (seconds)
 Molniya = SCraft(1600, 0, 0, 320, np.array([0, -2.08e7, 4.16e7, 0, -1.8e3, 0]))
 Sim1    = RK4Sim(0.25, Molniya, 0, t_end, "Sample Molniya Simulation (ECI)", "EM") #In Earth Moon System
-Sim1.run()
-
-Molniya_fdata1 = FData(Sim1)
-Molniya_fdata1.visualize(time_warp=100)
 
 
+#Sim1.run()
+#Molniya_fdata1 = FData(Sim1)
+#Molniya_fdata1.visualize(time_warp=100)
+
+#Sample Simulation for LRO after TLI
+LRO_tli_et  = 298636369.18444437
+sim_hours   = 144
+timestep    = 1
+frame       = "EM" #try changing to "FS" for a Sun Centered Inertial Version with all planets' gravities
+lro_sample  = SCraft(1016, 900, 0, 320, np.array([10167365.975892201, 1856377.8084626137, -3676233.578828538, 4562.784281644817, 7032.767739953707, 461.32442763548767]))
+Sim2        = RK4Sim(timestep, lro_sample, LRO_tli_et, LRO_tli_et+3600*sim_hours, "Sample LRO TLI Simulation", frame) #In Earth Moon System
+
+# Uncomment to run and visualize LRO:
+Sim2.run() 
+lro_fdata3 = FData(Sim2)
+lro_fdata3.visualize(time_warp=1000)
 
 
-#Ol
+
+
+
+#Old code used to run convergence tests and make graphs etc.
 
 
 # Sample spacecraft state vector: [position_x, position_y, position_z, velocity_x, velocity_y, velocity_z]
