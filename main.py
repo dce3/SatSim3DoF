@@ -4,8 +4,10 @@ from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.animation as animation
 from matplotlib.widgets import Button, Slider
 import spiceypy as spice
+from spiceypy.utils.support_types import SPICEDOUBLE_CELL
 from tqdm import tqdm
 import pickle
+
 
 # Newton's Gravitational Constant
 NGC = 6.67430e-11
@@ -134,7 +136,7 @@ class RK4Sim:
             self.simframe = "EARTH"
         elif self.system == "FS":
             self.cbody_list = [Sun, Mercury, Venus, Earth, Moon, Mars, Jupiter, Saturn, Uranus, Neptune]
-            earth_state_sun = earth.get_svec(t_start, frame="SUN")
+            earth_state_sun = Earth.get_svec(t_start, frame="SUN")
             self.scraft.svec = self.scraft.svec + earth_state_sun
             self.simframe = "SUN"
             self.scraft.simframe = "SUN"
@@ -224,8 +226,74 @@ class FData:
             return None
         
 
-    def compare(self, flight_ephem):
-        
+    def compare(self, flight_ephem, scraft_id, n_points):
+        # Load necessary kernels.
+        spice.furnsh(flight_ephem)
+        spice.furnsh("ephems/de440.bsp")
+        spice.furnsh("naif0012.tls")
+
+        # Get the coverage intervals for the flight ephemeris.
+        coverage_window = SPICEDOUBLE_CELL(1000)
+        spice.spkcov(flight_ephem, scraft_id, coverage_window)
+        n_intervals = spice.wncard(coverage_window)
+        print(f"Found {n_intervals} coverage interval(s) for object id {scraft_id}.")
+
+        # Print each coverage interval.
+        for i in range(n_intervals):
+            (start_et, stop_et) = spice.wnfetd(coverage_window, i)
+            print(f"Interval {i+1}: Start ET = {start_et}, Stop ET = {stop_et}")
+            start_utc = spice.et2utc(start_et, 'C', 3)
+            stop_utc  = spice.et2utc(stop_et, 'C', 3)
+            print(f"           Start UTC: {start_utc}, Stop UTC: {stop_utc}")
+        print("")
+
+        # Prepare an array to store the true state positions.
+        self.true_pos_arr = np.zeros_like(self.pos_arr)
+
+        # Loop over all simulation times.
+        for i in range(self.pos_arr.shape[0]):
+            et = self.pos_arr[i, 3]
+            # Retrieve the state vector from SPICE (note: target is passed as a string).
+            state, light_time = spice.spkezr(str(scraft_id), et, "J2000", "NONE", self.simframe)
+            # The simulation uses meters so convert state from km to m.
+            self.true_pos_arr[i, :3] = state[:3] * 1000
+            self.true_pos_arr[i, 3] = et
+
+        # Compute the error norm between your simulation and the SPICE state.
+        error_norm = np.linalg.norm(self.pos_arr[:, :3] - self.true_pos_arr[:, :3], axis=1)
+        time_arr = self.pos_arr[:, 3]
+
+        # Compute summary statistics.
+        max_error   = np.max(error_norm)
+        mean_error  = np.mean(error_norm)
+        final_error = error_norm[-1]
+
+        print(f"Max error:   {max_error:.6f}")
+        print(f"Mean error:  {mean_error:.6f}")
+        print(f"Final error: {final_error:.6f}")
+
+        # Sample equally spaced indices for the graph
+        total_points = len(time_arr)
+        sample_indices = np.linspace(0, total_points - 1, n_points, dtype=int)
+        sampled_time   = time_arr[sample_indices]
+        sampled_error  = error_norm[sample_indices]
+
+        # Plot error vs time for the sampled points.
+        plt.figure(figsize=(10, 6))
+        plt.plot(sampled_time, sampled_error)
+        plt.title("RK4 Position Error Over Time (Filtered)")
+        plt.xlabel("Time [s]")
+        plt.ylabel("Position Error [m]")
+        plt.grid(True)
+        plt.show()
+
+        # Unload kernels.
+        spice.unload(flight_ephem)
+        spice.unload("ephems/de440.bsp")
+        spice.unload("naif0012.tls")
+
+
+
 
 
     def visualize(self, time_warp=100):
@@ -431,27 +499,96 @@ class FData:
         plt.show()
 
 
+def compare_fdata_list(fdata_list, flight_ephem, scraft_id, n_points):
+
+    # --- Load the necessary SPICE kernels ---
+    spice.furnsh(flight_ephem)
+    spice.furnsh("ephems/de440.bsp")
+    spice.furnsh("naif0012.tls")
+    
+    # --- Retrieve and print flight ephemeris coverage intervals ---
+    coverage_window = SPICEDOUBLE_CELL(1000)
+    spice.spkcov(flight_ephem, scraft_id, coverage_window)
+    n_intervals = spice.wncard(coverage_window)
+    print(f"Found {n_intervals} coverage interval(s) for object id {scraft_id} in flight ephemeris '{flight_ephem}':")
+    for i in range(n_intervals):
+        (start_et, stop_et) = spice.wnfetd(coverage_window, i)
+        start_utc = spice.et2utc(start_et, 'C', 3)
+        stop_utc  = spice.et2utc(stop_et, 'C', 3)
+        print(f"  Interval {i+1}: Start ET = {start_et}, Stop ET = {stop_et}")
+        print(f"              Start UTC: {start_utc}, Stop UTC: {stop_utc}")
+    print("")
+
+    # --- Create a new plot ---
+    plt.figure(figsize=(10, 6))
+    
+    # --- Process each FData simulation ---
+    for fdata in fdata_list:
+        # Create an array to store true state positions (using same shape as the simulation positions)
+        true_pos_arr = np.zeros_like(fdata.pos_arr)
+
+        # Loop over all simulation times to retrieve true spacecraft state from SPICE.
+        for i in range(fdata.pos_arr.shape[0]):
+            et = fdata.pos_arr[i, 3]
+            state, light_time = spice.spkezr(str(scraft_id), et, "J2000", "NONE", fdata.simframe)
+            # Convert from km (SPICE default) to m and store into true position array.
+            true_pos_arr[i, :3] = state[:3] * 1000
+            true_pos_arr[i, 3] = et
+
+        # Compute the error norm (L2 norm) between simulated and SPICE true positions.
+        error_norm = np.linalg.norm(fdata.pos_arr[:, :3] - true_pos_arr[:, :3], axis=1)
+        time_arr = fdata.pos_arr[:, 3]
+        
+        # Compute and print summary error statistics.
+        max_error = np.max(error_norm)
+        mean_error = np.mean(error_norm)
+        final_error = error_norm[-1]
+        print(f"Simulation '{fdata.title}':")
+        print(f"  Max error:   {max_error:.6f} m")
+        print(f"  Mean error:  {mean_error:.6f} m")
+        print(f"  Final error: {final_error:.6f} m\n")
+        
+        # Sample the data to plot only n_points for clarity.
+        total_points = len(time_arr)
+        sample_indices = np.linspace(0, total_points - 1, n_points, dtype=int)
+        sampled_time = time_arr[sample_indices]
+        sampled_error = error_norm[sample_indices]
+        
+        # Plot the error vs. time for this simulation.
+        plt.plot(sampled_time, sampled_error, label=fdata.title)
+
+    # --- Finalize the plot ---
+    plt.title("RK4 Position Error Over Time (All Simulations)")
+    plt.xlabel("Time [s]")
+    plt.ylabel("Position Error [m]")
+    plt.grid(True)
+    plt.legend()
+    plt.show()
+
+    # --- Unload SPICE kernels ---
+    spice.unload(flight_ephem)
+    spice.unload("ephems/de440.bsp")
+    spice.unload("naif0012.tls")
 
 
 
-# Define Earth, Moon, and spacecraft, then execute the simulation
-earth = CBody("Earth", "EARTH", 5.9722e24, 6378137, color="blue")
-luna = CBody("Moon", "MOON", 7.34767309e22, 1737400, color="white")
-sol  = CBody("Sun", "10", 1.9891e30, 6.957e8, color="yellow")
 
 # Sample spacecraft state vector: [position_x, position_y, position_z, velocity_x, velocity_y, velocity_z]
-##sat1 = SCraft(100, 80, 1000, 320, np.array([4404364.154715429, -4311452.937854692, -3333241.5900105746, 8626.193135065847, 5867.596093273166, -1661.187545094598]))
-#sat1 = SCraft(100, 80, 1000, 320, np.array([7447942.501507646, -1408650.136251841, 1985206.7413388218, 5987.824140223813, 8866.625464085342, 9480.132017400176]))
+#sat1 = SCraft(100, 80, 1000, 320, np.array([4404364.154715429, -4311452.937854692, -3333241.5900105746, 8626.193135065847, 5867.596093273166, -1661.187545094598]))
+sat1 = SCraft(100, 80, 1000, 320, np.array([7447942.501507646, -1408650.136251841, 1985206.7413388218, 5987.824140223813, 8866.625464085342, 9480.132017400176]))
 # h, scraft, t_start, t_end, title, system
-##sim1 = RK4Sim(10, sat1, 298635469, 298635469+14*36000, "Lunar Reconnaissance Orbiter Lunar Injection and Transfer", "EM")
+#sim1 = RK4Sim(1, sat1, 298635469, 298635469+14*36000, "Lunar Reconnaissance Orbiter Lunar Injection and Transfer", "EM")
 
-#sim1 = RK4Sim(1000, sat1, -705788798.8171841, -705788798.8171841+0.75*126758400, "Voyager 2", "FS")
+sim1 = RK4Sim(20, sat1, -705788798.8171841, -705788798.8171841+4.5*31557600, "Voyager 2", "FS")
 
-##sim1.run()
+sim1.run()
 
-##fdata1 = FData(sim1)
+fdata1 = FData(sim1)
 
-##fdata1.save_to_file("fdata_test1")
+fdata1.save_to_file("fdata_v2_fs.pkl")
 
-fdata1 = FData.load_from_file("fdata_test1.pkl")
-fdata1.visualize(time_warp = 1000)
+#fdata1 = FData.load_from_file("fdata_test3_fs.pkl")
+
+#fdata1.visualize(time_warp = 1000)
+#fdata1.compare("flight_ephems/lrorg_2009169_2010001_v01.bsp", -85, 10000)
+#fdata1.compare("flight_ephems/Voyager_2.m05016u.merged.bsp", -32)
