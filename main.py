@@ -5,6 +5,7 @@ import matplotlib.animation as animation
 from matplotlib.widgets import Button, Slider
 import spiceypy as spice
 from tqdm import tqdm
+import pickle
 
 # Newton's Gravitational Constant
 NGC = 6.67430e-11
@@ -112,7 +113,7 @@ class RK4Sim:
         self.title = title
         self.system = system
         self.hcount = int((self.t_end - self.t_start) / h)
-        self.pos_arr = np.zeros((self.hcount, 3))
+        self.pos_arr = np.zeros((self.hcount, 4))
         
 
         self.cbody_list = []
@@ -179,19 +180,69 @@ class RK4Sim:
     def run(self):
         et = self.t_start
         for i in tqdm(range(self.hcount)):
-            self.pos_arr[i, :] = self.tstep(et)
+            self.pos_arr[i, :3] = self.tstep(et)
+            self.pos_arr[i, 3] = et
             et += self.h
-
     
 
-    
 
-    def visualize(self, animate_rate=1):
-        stride = 100  # integration-step sampling stride
-        # --- Spacecraft trajectory data (sampled) ---
-        sat_x = self.pos_arr[::stride, 0]
-        sat_y = self.pos_arr[::stride, 1]
-        sat_z = self.pos_arr[::stride, 2]
+class FData:
+    def __init__(self, simdata):
+        self.pos_arr    = simdata.pos_arr
+        self.title      = simdata.title
+        self.system     = simdata.system
+        self.h          = simdata.h
+        self.cbody_list = simdata.cbody_list
+        self.simframe   = simdata.simframe
+
+        self.t_start = self.pos_arr[0, 3]
+        self.t_end   = self.pos_arr[-1, 3]
+
+
+        print("Title Stored in FData Class:", self.title)
+        print(self.t_start)
+        print(self.t_end)
+
+    
+    def save_to_file(self, filename):
+        try:
+            with open(filename, "wb") as f:
+                pickle.dump(self, f, protocol=pickle.HIGHEST_PROTOCOL)
+            print(f"FData object saved successfully to {filename}")
+        except Exception as e:
+            print(f"Error saving FData object: {e}")
+
+    @classmethod
+    def load_from_file(cls, filename):
+        try:
+            with open(filename, "rb") as f:
+                data = pickle.load(f)
+            print(f"FData object loaded successfully from {filename}")
+            return data
+        except Exception as e:
+            print(f"Error loading FData object: {e}")
+            return None
+        
+
+    def compare(self, flight_ephem):
+        
+
+
+    def visualize(self, time_warp=100):
+        # Fix the animate rate to 1 ms (or 1 unit as used in interval)
+        animate_rate = 1
+
+        # Compute the frame times from simulation start to end using the given time warp factor.
+        frame_times = np.arange(self.t_start, self.t_end, time_warp)
+        # Find the corresponding indices in the simulation data.
+        indices = np.searchsorted(self.pos_arr[:, 3], frame_times)
+        # Ensure we don't go out-of-bounds.
+        indices = np.clip(indices, 0, len(self.pos_arr) - 1)
+
+        # Precompute spacecraft trajectory data (sampled).
+        sat_x = self.pos_arr[indices, 0]
+        sat_y = self.pos_arr[indices, 1]
+        sat_z = self.pos_arr[indices, 2]
 
         # --- Create figure and 3D axis ---
         fig = plt.figure(figsize=(12, 8))
@@ -273,51 +324,58 @@ class RK4Sim:
                 line_recent.set_data([], [])
                 line_recent.set_3d_properties([])
 
-            # Compute current simulation time.
-            current_et = self.t_start + num * stride * self.h
+            # Get current frame time from simulation data.
+            current_index = indices[num]
+            current_et = self.pos_arr[current_index, 3]
 
-            # --- Update each celestial body's position, surface, center marker, and name label ---
+            # Get spacecraft's current position.
+            current_sc_x = sat_x[num]
+            current_sc_y = sat_y[num]
+            current_sc_z = sat_z[num]
+            current_sc_pos = np.array([current_sc_x, current_sc_y, current_sc_z])
+
+            # --- Update each celestial body's position and visualization ---
             for idx, body in enumerate(self.cbody_list):
-                # Retrieve current position.
                 pos = body.get_svec(current_et, frame=self.simframe)[:3]
-                # Compute the scaled sphere coordinates for the body.
-                x_body = body.radius * x_unit + pos[0]
-                y_body = body.radius * y_unit + pos[1]
-                z_body = body.radius * z_unit + pos[2]
-                # Remove any existing surface for this body.
-                if idx in body_surfaces and body_surfaces[idx] is not None:
-                    body_surfaces[idx].remove()
-                # Plot the celestial body using its color property.
-                body_surfaces[idx] = ax.plot_surface(
-                    x_body, y_body, z_body,
-                    color=body.color, alpha=0.5, rstride=4, cstride=4
-                )
+                # Calculate distance from the spacecraft to the body's center.
+                distance = np.linalg.norm(pos - current_sc_pos)
 
-                # Remove any existing center marker and add a new one.
+                # Check if distance is below the threshold (1e9 m).
+                if distance < 1e9:
+                    # Compute sphere coordinates only if within threshold.
+                    x_body = body.radius * x_unit + pos[0]
+                    y_body = body.radius * y_unit + pos[1]
+                    z_body = body.radius * z_unit + pos[2]
+                    # Remove any existing surface and then replot.
+                    if idx in body_surfaces and body_surfaces[idx] is not None:
+                        body_surfaces[idx].remove()
+                    body_surfaces[idx] = ax.plot_surface(
+                        x_body, y_body, z_body,
+                        color=body.color, alpha=0.5, rstride=4, cstride=4
+                    )
+                else:
+                    # If beyond the threshold, ensure sphere is removed.
+                    if idx in body_surfaces and body_surfaces[idx] is not None:
+                        body_surfaces[idx].remove()
+                        body_surfaces[idx] = None
+
+                # Update the center marker ("x").
                 if idx in body_centers and body_centers[idx] is not None:
                     body_centers[idx].remove()
-                # The scatter marker uses an 'x' shape; its size (s=50) can be adjusted.
                 body_centers[idx] = ax.scatter(
                     pos[0], pos[1], pos[2], marker="x", color=body.color, alpha=0.5, s=20
                 )
 
-                # Remove any existing text label and add a new one.
+                # Update the text label.
                 if idx in body_labels and body_labels[idx] is not None:
                     body_labels[idx].remove()
-                # Place the text label slightly above the body.
                 label_x = pos[0]
                 label_y = pos[1]
-                label_z = pos[2] + body.radius * 1.05  # Offset; adjust if needed.
+                label_z = pos[2] + body.radius * 1.05
                 body_labels[idx] = ax.text(
                     label_x, label_y, label_z, body.name,
                     color="white", fontsize=9, ha="center", va="bottom"
                 )
-
-            # Get spacecraft's current position.
-            idx_sc = min(num, len(sat_x) - 1)
-            current_sc_x = sat_x[idx_sc]
-            current_sc_y = sat_y[idx_sc]
-            current_sc_z = sat_z[idx_sc]
 
             # Set axis limits centered on the spacecraft.
             ax.set_xlim(current_sc_x - bb_half[0], current_sc_x + bb_half[0])
@@ -332,11 +390,10 @@ class RK4Sim:
                 f"Spacecraft: ({(current_sc_x/1000):.2f}, {(current_sc_y/1000):.2f}, {(current_sc_z/1000):.2f}) km"
             )
 
-            # Return updated artists.
-            return (line_old, line_recent, 
-                    *list(body_surfaces.values()), 
-                    *list(body_labels.values()), 
-                    *list(body_centers.values()), 
+            return (line_old, line_recent,
+                    *list(body_surfaces.values()),
+                    *list(body_labels.values()),
+                    *list(body_centers.values()),
                     et_text)
 
         # Create the animation.
@@ -383,12 +440,18 @@ luna = CBody("Moon", "MOON", 7.34767309e22, 1737400, color="white")
 sol  = CBody("Sun", "10", 1.9891e30, 6.957e8, color="yellow")
 
 # Sample spacecraft state vector: [position_x, position_y, position_z, velocity_x, velocity_y, velocity_z]
-sat1 = SCraft(100, 80, 1000, 320, np.array([4404364.154715429, -4311452.937854692, -3333241.5900105746, 8626.193135065847, 5867.596093273166, -1661.187545094598]))
+##sat1 = SCraft(100, 80, 1000, 320, np.array([4404364.154715429, -4311452.937854692, -3333241.5900105746, 8626.193135065847, 5867.596093273166, -1661.187545094598]))
 #sat1 = SCraft(100, 80, 1000, 320, np.array([7447942.501507646, -1408650.136251841, 1985206.7413388218, 5987.824140223813, 8866.625464085342, 9480.132017400176]))
 # h, scraft, t_start, t_end, title, system
-sim1 = RK4Sim(1, sat1, 298635469, 298635469+14*36000, "Lunar Reconnaissance Orbiter Lunar Injection and Transfer", "EM")
+##sim1 = RK4Sim(10, sat1, 298635469, 298635469+14*36000, "Lunar Reconnaissance Orbiter Lunar Injection and Transfer", "EM")
 
-#sim1 = RK4Sim(500, sat1, -705788798.8171841, -705788798.8171841+2*126758400, "Voyager 2", "FS")
+#sim1 = RK4Sim(1000, sat1, -705788798.8171841, -705788798.8171841+0.75*126758400, "Voyager 2", "FS")
 
-sim1.run()
-sim1.visualize()
+##sim1.run()
+
+##fdata1 = FData(sim1)
+
+##fdata1.save_to_file("fdata_test1")
+
+fdata1 = FData.load_from_file("fdata_test1.pkl")
+fdata1.visualize(time_warp = 1000)
