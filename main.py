@@ -49,6 +49,7 @@ class SCraft:
         self.m_wet_temp = self.m_wet
         self.svec_temp = self.svec
         self.att_temp = self.att
+        self.simframe = "EARTH"
 
     def f_gravity(self, cbody_list, et, temp=False):
         f_g_sum = 0
@@ -60,7 +61,7 @@ class SCraft:
             pos_sc = self.svec_temp[:3]
 
         for cbody in cbody_list:
-            rvec = pos_sc - cbody.get_svec(et)[:3]
+            rvec = pos_sc - cbody.get_svec(et, frame=self.simframe)[:3]
             rmag = np.linalg.norm(rvec)
             f_g_body = - (cbody.gparam * m_use * rvec) / (rmag**3)
             f_g_sum += f_g_body
@@ -103,23 +104,43 @@ class SCraft:
 
 
 class RK4Sim:
-    def __init__(self, h, cbody_list, sc_list, t_start, t_end, title, center="EARTH"):
+    def __init__(self, h, scraft, t_start, t_end, title, system):
         self.h = h
-        self.cbody_list = cbody_list
-        self.sc_list = sc_list
+        self.scraft = scraft
         self.t_start = t_start
         self.t_end = t_end
-        self.center = center
         self.title = title
+        self.system = system
         self.hcount = int((self.t_end - self.t_start) / h)
         self.pos_arr = np.zeros((self.hcount, 3))
+        
 
-        earth_state_sun = earth.get_svec(t_start, frame="SUN")
-        self.sc_list[0].svec = self.sc_list[0].svec + earth_state_sun
+        self.cbody_list = []
+
+        Sun     = CBody("Sun", "10", 1.9891e30, 6.957e8, color="yellow")
+        Mercury = CBody("Mercury", "MERCURY", 3.3011e23, 2439700, color="gray")
+        Venus   = CBody("Venus", "VENUS", 4.8675e24, 6051800, color="palegoldenrod")
+        Earth   = CBody("Earth", "EARTH", 5.9722e24, 6378137, color="blue")
+        Moon    = CBody("Moon", "MOON", 7.34767309e22, 1737400, color="white")
+        Mars    = CBody("Mars", "MARS BARYCENTER", 6.4171e23, 3389500, color="red")
+        Jupiter = CBody("Jupiter", "JUPITER BARYCENTER", 1.89813e27, 69911000, color="orange")
+        Saturn  = CBody("Saturn", "SATURN BARYCENTER", 5.6834e26, 58232000, color="gold") 
+        Uranus  = CBody("Uranus", "URANUS BARYCENTER", 8.6810e25, 25362000, color="cyan")
+        Neptune = CBody("Neptune", "NEPTUNE BARYCENTER", 1.02413e26, 24622000, color="navy")
+
+        if self.system == "EM":
+            self.cbody_list = [Earth, Moon]
+            self.simframe = "EARTH"
+        elif self.system == "FS":
+            self.cbody_list = [Sun, Mercury, Venus, Earth, Moon, Mars, Jupiter, Saturn, Uranus, Neptune]
+            earth_state_sun = earth.get_svec(t_start, frame="SUN")
+            self.scraft.svec = self.scraft.svec + earth_state_sun
+            self.simframe = "SUN"
+            self.scraft.simframe = "SUN"
 
 
-    def tstep(self, sc_id, et):
-        scraft = self.sc_list[sc_id]
+    def tstep(self, et):
+        scraft = self.scraft
 
         k1_v = self.h * scraft.svec[3:]
         k1_a = self.h * scraft.f_gravity(self.cbody_list, et) / scraft.m_wet
@@ -158,7 +179,7 @@ class RK4Sim:
     def run(self):
         et = self.t_start
         for i in tqdm(range(self.hcount)):
-            self.pos_arr[i, :] = self.tstep(0, et)
+            self.pos_arr[i, :] = self.tstep(et)
             et += self.h
 
     
@@ -166,7 +187,7 @@ class RK4Sim:
     
 
     def visualize(self, animate_rate=1):
-        stride = 500  # integration-step sampling stride
+        stride = 100  # integration-step sampling stride
         # --- Spacecraft trajectory data (sampled) ---
         sat_x = self.pos_arr[::stride, 0]
         sat_y = self.pos_arr[::stride, 1]
@@ -258,7 +279,7 @@ class RK4Sim:
             # --- Update each celestial body's position, surface, center marker, and name label ---
             for idx, body in enumerate(self.cbody_list):
                 # Retrieve current position.
-                pos = body.get_svec(current_et)[:3]
+                pos = body.get_svec(current_et, frame=self.simframe)[:3]
                 # Compute the scaled sphere coordinates for the body.
                 x_body = body.radius * x_unit + pos[0]
                 y_body = body.radius * y_unit + pos[1]
@@ -360,9 +381,14 @@ class RK4Sim:
 earth = CBody("Earth", "EARTH", 5.9722e24, 6378137, color="blue")
 luna = CBody("Moon", "MOON", 7.34767309e22, 1737400, color="white")
 sol  = CBody("Sun", "10", 1.9891e30, 6.957e8, color="yellow")
+
 # Sample spacecraft state vector: [position_x, position_y, position_z, velocity_x, velocity_y, velocity_z]
 sat1 = SCraft(100, 80, 1000, 320, np.array([4404364.154715429, -4311452.937854692, -3333241.5900105746, 8626.193135065847, 5867.596093273166, -1661.187545094598]))
-sim1 = RK4Sim(10, [earth, luna, sol], [sat1], 298635469, 298635469+14*36000, "Lunar Reconnaissance Orbiter Lunar Injection and Transfer")
+#sat1 = SCraft(100, 80, 1000, 320, np.array([7447942.501507646, -1408650.136251841, 1985206.7413388218, 5987.824140223813, 8866.625464085342, 9480.132017400176]))
+# h, scraft, t_start, t_end, title, system
+sim1 = RK4Sim(1, sat1, 298635469, 298635469+14*36000, "Lunar Reconnaissance Orbiter Lunar Injection and Transfer", "EM")
+
+#sim1 = RK4Sim(500, sat1, -705788798.8171841, -705788798.8171841+2*126758400, "Voyager 2", "FS")
 
 sim1.run()
 sim1.visualize()
